@@ -1,0 +1,1 @@
+[msgId=6, repeat=0, userId=440123455, spare=0, dac=440, fi=63, data=BinArray [TODO], destination=440123456, retransmit=0, seqNum=2]
