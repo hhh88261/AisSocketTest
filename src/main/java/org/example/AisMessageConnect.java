@@ -9,31 +9,49 @@ import dk.dma.ais.message.AisMessageException;
 import dk.dma.ais.sentence.SentenceException;
 import dk.dma.ais.sentence.Vdm;
 import jakarta.websocket.*;
+import org.apache.ibatis.io.Resources;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.session.SqlSessionFactoryBuilder;
+import org.example.Dao.ShipDao;
+import org.example.Model.ShipModel;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import java.sql.Connection;
+
 @ClientEndpoint
 public class AisMessageConnect {
     private Session session;
     private volatile String jsonInputString;
+    public Connection conn;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
+        /// db 연결
+        Reader reader = Resources.getResourceAsReader("Configuration.xml");
+        SqlSessionFactory sqlSessionFactory = new SqlSessionFactoryBuilder().build(reader);
 
-       while (true) {
-           passingData();
-       }
+        ShipDao shipDao = new ShipDao(sqlSessionFactory);
+
+        try {
+        } catch (Exception e) {
+            System.out.println(e);
+        }
+
+        while (true) {
+            passingData(shipDao);
+        }
     }
 
     public static String convertAisMessageToJson(AisMessage aisMessage) {
         return aisMessage.toString();
     }
 
+    /// 웹소켓 연결
     public void connect(String uri) {
         try {
             WebSocketContainer container = ContainerProvider.getWebSocketContainer();
@@ -43,10 +61,8 @@ public class AisMessageConnect {
         }
     }
 
-
-
-    //AIS 메시지 파싱
-    public static String passingData() {
+    /// AIS 메시지 파싱
+    public static String passingData(ShipDao shipDao) {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("155.155.4.99", 8030));
             System.out.println("TCP소켓 접속 됨");
@@ -59,15 +75,15 @@ public class AisMessageConnect {
                 while ((response = reader.readLine()) != null) {
                     try {
                         String[] parts = response.split(",");
-                        String name = null;
 
                         Vdm vdm = new Vdm();
-                        if(parts.length > 1 && parts[5].startsWith("5")) {
+                        // ----------------msgId가 5일 경우---------------- \\
+                        if (parts.length > 1 && parts[5].startsWith("5")) {
                             System.out.println("---타입 5의 메시지---");
                             String rawMessagePart1 = response;
-
                             System.out.println("첫번째 메시지 :" + rawMessagePart1);
 
+                            //다음 메시지를 받아와 파싱
                             while ((response = reader.readLine()) != null) {
                                 String rawMessagePart2 = response;
                                 System.out.println("두번째 메시지 :" + rawMessagePart2);
@@ -90,27 +106,11 @@ public class AisMessageConnect {
                                     String callSign = type5Message.getCallsign();
 
                                     shipName = shipName.replace("@", ""); // @ 기호 제거
-
                                     shipName = shipName.replaceAll("\\s+$", ""); // 마지막 공백 제거
-
                                     callSign = callSign.replaceAll("\\s+", ""); // 모든 공백 제거
 
-                                    callSign = callSign.replaceAll("\\s+$", ""); // 마지막 공백 제거
-
-                                    System.out.println("MMSI: " + Mmsi5);
-                                    System.out.println("Ship Name: " + shipName);
-                                    System.out.println("Call Sign: " + callSign);
-
-                                    // 선박 제원 정보 가져오기
+                                    // 선박 제원정보를 배열에 저장
                                     String[] shipInfo = type5message(callSign, shipName);
-                                    // shipInfo 배열의 요소를 사용
-                                    System.out.println("선박 호출 부호: " + shipInfo[0]);
-                                    System.out.println("선박 번호: " + shipInfo[1]);
-                                    System.out.println("선박 영문 이름: " + shipInfo[2]);
-                                    System.out.println("선박 국적: " + shipInfo[3]);
-                                    System.out.println("총 톤수: " + shipInfo[4]);
-                                    System.out.println("운항 형태명: " + shipInfo[5]);
-
                                     String shipCallSign = shipInfo[0];
                                     String ShipName = shipInfo[2];
                                     String ShipCountry = shipInfo[3];
@@ -119,28 +119,24 @@ public class AisMessageConnect {
 
                                     //타입 5 파싱 메시지 전송
                                     String message = msgId + "," + Mmsi5 + "," + shipName;
-
                                     client.updateMessage(message);
+                                    System.out.println("전송된 타입 5의 메시지: " + message);
 
                                     //선박 제원 정보 전송
                                     String infoType = "*";
-                                    String shipInfoMessage = infoType + "," + Mmsi5 + "," + shipCallSign +","  + ShipName + "," + ShipCountry + "," + ShipWeight + "," + ShipOperationType;
-
+                                    String shipInfoMessage = infoType + "," + Mmsi5 + "," + shipCallSign + "," + ShipName + "," + ShipCountry + "," + ShipWeight + "," + ShipOperationType;
                                     client.updateMessage(shipInfoMessage);
-
-                                    System.out.println("전송된 메시지: " + message);
-                                    System.out.println("전송된 메시지: " + shipInfoMessage);
+                                    System.out.println("전송된 선박 제원정보: " + shipInfoMessage);
                                 } else {
                                     System.out.println("The message is not of type 5.");
                                 }
-
-                                if(response.startsWith("!AIVDM")){
+                                if (response.startsWith("!AIVDM")) {
                                     break;
                                 }
                             }
                         }
-                        vdm.parse(response);// 응답 문자열을 파싱하여 VDM 객체 생성
-
+                        // ---- msgId가 5가 아닌 AIS 메시지를 파싱 ---- \\
+                        vdm.parse(response);
                         AisMessage aisMessage = AisMessage.getInstance(vdm);
                         System.out.println(aisMessage);
 
@@ -203,8 +199,22 @@ public class AisMessageConnect {
                             String[] coordinates = pos.split(",");
                             double latitude = Double.parseDouble(coordinates[0]) / 600000.0;
                             double longitude = Double.parseDouble(coordinates[1]) / 600000.0;
+
                             String Pos = String.format("%.6f", latitude) + "," + String.format("%.6f", longitude);
                             String Mmsi = String.format(mmsi);
+                            int TrueHead = Integer.parseInt(trueHead);
+
+                            //위치 정보 DB 저장
+                            if (Mmsi != null && Pos != null) {
+                                ShipModel shipModel = new ShipModel();
+
+                                shipModel.setMmsi(Mmsi);
+                                shipModel.setLon(latitude);
+                                shipModel.setLat(longitude);
+                                shipModel.setTrueHead(TrueHead);
+
+                                shipDao.ShipService(shipModel);
+                            }
 
                             // 예상 위치 계산
                             if (Pos != null && trueHead != null && trueHead != "511" && Sog != null) {
@@ -226,11 +236,9 @@ public class AisMessageConnect {
                                 System.out.println("전송된 메시지: " + Message);
                                 client.updateMessage(Message);
                             }
-
                         } else {
                             System.out.println("위경도 값 또는 MMSI가 없음");
                         }
-
                     } catch (AisMessageException e) {
                         System.err.println("유효하지 않은 메시지 ID 입니다: " + e.getMessage());
                     } catch (SentenceException e) {
@@ -246,6 +254,7 @@ public class AisMessageConnect {
         return null;
     }
 
+    ///선박의 10분후 위치를 계산
     public static String[] calculateLocation(String Pos, String cog, String Sog) {
         // lon과 lat에 저장, 형변환
         Pos = Pos.replace("(", "").replace(")", "");
@@ -255,10 +264,10 @@ public class AisMessageConnect {
         double lon = Double.parseDouble(coordinates[1].trim());
 
         int cogCalucalate = Integer.parseInt(cog);
-        double SogCalucalate = Double.parseDouble(Sog)/10.0;
+        double SogCalucalate = Double.parseDouble(Sog) / 10.0;
         System.out.println(SogCalucalate);// Sog를 double로
 
-        // 10분 후 이동 거리 계산 (Sog는 km/h로 가정)
+        // 10분 후 이동 거리 계산
         double d = (SogCalucalate * 10.0 / 60.0); // 10분 이동 거리
 
         // 이동 거리 계산
@@ -278,9 +287,9 @@ public class AisMessageConnect {
         return new String[]{newLat, newLon};
     }
 
-
-    //해양수산부_선박제원정보 서비스 API
+    /// 해양수산부_선박제원정보 서비스 API
     public static String[] type5message(String callSign, String shipName) throws Exception {
+        // 선박제원정보 가져오기
         String jsonData = ApiExplorer.fetchJsonData(callSign, shipName);
 
         // JSON 문자열을 JsonNode로 변환
@@ -304,7 +313,7 @@ public class AisMessageConnect {
         return shipInfo;
     }
 
-    // 최신 메시지를 업데이트하고 전송
+    /// 최신 메시지 업데이트 후 전송
     public void updateMessage(String newMessage) {
         this.jsonInputString = newMessage;
         if (session != null && session.isOpen()) {
@@ -316,16 +325,13 @@ public class AisMessageConnect {
     public void onOpen(Session session) {
         this.session = session;
         System.out.println("웹소켓 접속 성공: " + session.getId());
+        sendMessage(jsonInputString);
 
-        // 초기 연결 후 첫 메시지 전송
-        if (jsonInputString != null) {
-            sendMessage(jsonInputString);
-        }
     }
 
     @OnMessage
     public void onMessage(String message) {
-        // System.out.println("서버로부터 수신된 메시지: " + message);
+        System.out.println("서버로부터 수신된 메시지: " + message);
     }
 
     @OnClose

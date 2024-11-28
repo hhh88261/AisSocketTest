@@ -118,6 +118,18 @@
             <version>2.13.0</version>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/com.oracle.database.jdbc/ojdbc10 -->
+        <dependency>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc10</artifactId>
+            <version>19.24.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis</artifactId>
+            <version>3.5.16</version>
+        </dependency>
 
     </dependencies>
 </project>

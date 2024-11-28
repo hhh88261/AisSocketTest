@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.ShipMapper">
+    <insert id="insertShip" parameterType="org.example.Model.ShipModel">
+        INSERT INTO shiproute( MMSI, LON, LAT, SHIP_TIME, TRUE_HEAD)
+        VALUES ( #{mmsi, jdbcType=VARCHAR}, #{lon}, #{lat}, TO_CHAR(SYSDATE, 'HH24:MI:SS'), #{trueHead})
+    </insert>
+
+    <select id="insertPastData" parameterType="org.example.Model.SelectShipModel">
+        <![CDATA[
+        INSERT INTO pastshipdata (MMSI, LON, LAT)
+        SELECT MMSI AS ShipPastMmsi, LON AS shipPastLon, LAT AS shipPastLat
+        FROM shiproute
+        WHERE TRUNC(DATE_RATE) = TO_DATE(#{shipDate}, 'YYYY-MM-DD')
+          AND SHIP_TIME >= #{shipStartTime}
+          AND SHIP_TIME <= #{shipEndTime}
+        ]]>
+    </select>
+
+    <select id="selectPastShipData" resultType="org.example.Model.PastShipDataSelectModel">
+    <![CDATA[
+        SELECT MMSI, LON, LAT
+        FROM pastshipdata
+        ]]>
+</select>
+</mapper>
